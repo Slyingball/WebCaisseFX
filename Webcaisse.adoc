@@ -1,0 +1,399 @@
+# Webcaisse
+
+# **Mission 1 - Souscription en ligne et Sécurité**
+
+## **Partie 1 – Évolution de la base de données**
+
+### Question 1.1
+
+**Question** : Modifier la structure de la base de données utilisée par l’application AchatWebCaisse afin de permettre la souscription en ligne (formule par point de vente, programme de fidélisation, et choix des langues des modules). *Vous adopterez le formalisme de votre choix (Diagramme de classes ou schéma relationnel).*
+
+---
+
+### Schéma actuel (Document 1)
+
+Le schéma de base ne gère qu'**une seule formule par client** :
+
+- `Formule(id, libelle, prix, nbVendeursSimultanes)`
+- `Client(id, raisonSociale, rue, codePostal, ville, telephone, **#idFormule**)`
+
+**Problèmes** : pas de notion de point de vente, pas de programme de fidélité, pas de gestion des langues.
+
+---
+
+### Schéma proposé (modifié)
+
+On garde les tables existantes et on en ajoute de nouvelles :
+
+**Tables conservées (modifiées) :**
+
+- `Formule(`**id**, libelle, prix, nbVendeursSimultanes`)`
+- `Client(`**id**, raisonSociale, rue, codePostal, ville, telephone`)` → on **retire** `#idFormule` car la formule est maintenant liée au point de vente
+
+**Nouvelles tables :**
+
+- `PointDeVente(`**id**, nom, adresse, **#idClient**, **#idFormule**, **#idProgramme**`)` → chaque point de vente appartient à un client, a sa propre formule et son programme de fidélisation
+- `ProgrammeFidelite(`**id**, libelle`)` → contient les 3 programmes : "Tampon", "Montant Achat", "Points"
+- `Langue(`**id**, libelle`)` → contient les langues disponibles (Français, Anglais, Espagnol…)
+- `ModuleLangue(`**#idPointDeVente**, **#idLangue**`)` → table d'association (un point de vente peut activer plusieurs langues)
+
+---
+
+### Schéma relationnel complet
+
+```
+Formule (id, libelle, prix, nbVendeursSimultanes)
+    Clé primaire : id
+
+Client (id, raisonSociale, rue, codePostal, ville, telephone)
+    Clé primaire : id
+
+ProgrammeFidelite (id, libelle)
+    Clé primaire : id
+
+PointDeVente (id, nom, adresse, #idClient, #idFormule, #idProgramme)
+    Clé primaire : id
+    Clé étrangère : idClient → Client(id)
+    Clé étrangère : idFormule → Formule(id)
+    Clé étrangère : idProgramme → ProgrammeFidelite(id)
+
+Langue (id, libelle)
+    Clé primaire : id
+
+ModuleLangue (#idPointDeVente, #idLangue)
+    Clé primaire : (idPointDeVente, idLangue)
+    Clé étrangère : idPointDeVente → PointDeVente(id)
+    Clé étrangère : idLangue → Langue(id)
+```
+
+---
+
+### Explication simple
+
+| Besoin | Solution |
+| --- | --- |
+| Un client a **plusieurs points de vente** | Table `PointDeVente` avec `#idClient` |
+| Chaque point de vente a **sa propre formule** | `#idFormule` dans `PointDeVente` (et non dans `Client`) |
+| Choix du **programme de fidélité** | Table `ProgrammeFidelite` + `#idProgramme` dans `PointDeVente` |
+| Choix de **plusieurs langues** par point de vente | Table d'association `ModuleLangue` (relation N:N entre `PointDeVente` et `Langue`) |
+
+La table `ModuleLangue` est nécessaire car un point de vente peut activer **plusieurs langues** et une langue peut être utilisée par **plusieurs points de vente** → c'est une relation **Many-to-Many**.
+
+---
+
+## **Partie 2 – Audit de sécurité (Cybersécurité / DICP)**
+
+### **Question 1.2 :**
+
+**Question** : En vous appuyant sur les critères de sécurité de l’information (DICP) et le RGPD, expliquez pourquoi cette procédure d’envoi de mot de passe est une faille critique. Proposez un processus d’inscription sécurisé (algorithme ou description) pour corriger cette vulnérabilité.
+
+L'envoi d'un mot de passe en clair par email est une faille critique pour plusieurs raisons :
+
+- **Analyse DICP (Disponibilité, Intégrité, Confidentialité, Preuve)** :
+    - **Confidentialité violée** : Les emails utilisent le protocole SMTP qui ne chiffre pas toujours les messages de bout en bout. Le mot de passe peut être intercepté sur le réseau (attaque Man-in-the-Middle) ou lu par un administrateur des serveurs relais.
+    - **Preuve compromise** : Il est impossible de prouver avec certitude qui a lu l'email (le client légitime ou un pirate).
+- **Violation du RGPD** : L'article 32 du RGPD impose d'assurer un niveau de sécurité adapté aux risques pour les données personnelles. Stocker et transmettre des mots de passe en clair est une violation de cette obligation légale.
+- **Risque métier** : Un attaquant ayant accès à la boîte mail du client récupère instantanément, et sans effort, l'accès total à WebCaisse (risque d'usurpation d'identité).
+    
+    
+    **Processus d'inscription sécurisé (Solution) :**
+    
+
+Pour corriger cela, le système ne doit **jamais** connaître ni envoyer le mot de passe en clair. L'algorithme sécurisé est le suivant :
+
+1. Le client saisit son adresse email dans un formulaire (en HTTPS).
+2. L'application génère un **jeton unique (token)** à durée de vie limitée (ex: 24h) et l'associe au client.
+3. L'application envoie un email contenant un **lien sécurisé** intégrant ce jeton (mais pas de mot de passe).
+4. Le client clique sur le lien, qui le redirige vers une page sécurisée où il **choisit et saisit lui-même son mot de passe**.
+5. Le mot de passe est capturé, **haché avec un algorithme fort** (ex: bcrypt ou Argon2), puis seul le *hash* (l'empreinte) est stocké dans la base de données.
+
+## **Partie 3 - Gestion du changement de formule (Triggers)**
+
+### **Question 1.3**
+
+**Question :** Expliquer en quoi la structure de cette table ne permet pas de gérer l’historique nécessaire à la facturation mensuelle.
+
+La table proposée est : `FormuleSouscrite(idPointDeVente, idFormule)` (où les deux forment la clé primaire).
+
+Cette structure est **inadaptée** pour gérer l'historique et la facturation car :
+
+- **Aucune notion de temps** : Il manque les dates de début et de fin de la formule. Sans ces dates, on ne sait pas *quand* le client a souscrit ou annulé, ce qui rend impossible le calcul du montant au prorata pour la facture du mois.
+- **Clé primaire bloquante** : Comme la clé est le couple `(idPointDeVente, idFormule)`, un point de vente ne peut avoir qu'une seule fois une même formule dans toute son existence. Si un client passe de la formule "Gold" à "Silver", puis revient à "Gold" plus tard, la base refusera d'enregistrer le deuxième "Gold" car la ligne existe déjà. L'historique est donc écrasé ou bloqué.
+
+### Question 1.4
+
+**Question** : Proposer une correction de la structure de cette table.
+
+Pour corriger ce problème, il faut ajouter un identifiant unique (clé primaire simple) et des attributs de dates pour borner la période d'activation.
+
+**Nouvelle structure proposée :**
+
+`FormuleSouscrite(`**id**, `#idPointDeVente`, `#idFormule`, `dateDebut`, `dateFin`)
+
+- **`id`** : Clé primaire auto-incrémentée (chaque ligne est unique, même si c'est la même formule pour le même point de vente).
+- **`dateDebut`** : Date à laquelle la formule est activée.
+- **`dateFin`** : Date à laquelle la formule s'arrête (peut être `NULL` si la formule est actuellement en cours).
+
+Avec cela, chaque changement crée une nouvelle ligne avec ses propres dates, ce qui permet de conserver tout l'historique et de facturer au jour le jour.
+
+### Question 1.5 **(Base de données avancée)**
+
+**Question :** Rédigez un déclencheur (Trigger) SQL nommé `tg_audit_changement_formule` qui se déclenche lors de la modification d’une formule pour un point de vente, afin de garantir la traçabilité dans une table d’audit dédiée.
+
+Un Trigger (déclencheur) permet d'exécuter une action automatiquement dans la base de données. Ici, on veut garder une trace infalsifiable (exigence NF525) à chaque fois qu'une formule est modifiée (`AFTER UPDATE`).
+
+Code SQL du trigger :
+
+```sql
+DELIMITER //
+CREATE TRIGGER tg_audit_changement_formule
+AFTER UPDATE ON FormuleSouscrite
+FOR EACH ROW
+BEGIN
+    -- On vérifie s'il y a un réel changement de formule
+    IF OLD.idFormule <> NEW.idFormule THEN
+        -- Insertion dans la table d'audit
+        INSERT INTO AuditChangementFormule (idPointDeVente, ancienneFormule, nouvelleFormule, dateChangement)
+        VALUES (NEW.idPointDeVente, OLD.idFormule, NEW.idFormule, NOW());
+    END IF;
+END //
+DELIMITER ;
+```
+
+**Explication simple :**
+
+- `AFTER UPDATE` : Le trigger s'exécute juste après qu'une ligne de la table `FormuleSouscrite` a été modifiée.
+- `OLD.idFormule` : Représente l'identifiant de la formule *avant* la modification (l'ancienne).
+- `NEW.idFormule` : Représente l'identifiant de la nouvelle formule *après* modification.
+- Le code copie l'ancienne et la nouvelle valeur, l'identifiant du point de vente et la date exacte du changement (`NOW()`) dans une table de sécurité `AuditChangementFormule`.
+
+---
+
+# **Mission 2 : Fidélisation des consommateurs et Robustesse**
+
+## **Partie 1 – Amélioration du module GRC et Injection SQL**
+
+### **Question 2.1**
+
+**Question  :** Écrire les requêtes SQL permettant d’extraire les informations suivantes :
+
+a) La liste des consommateurs (nom, prénom, courriel) pour lesquels au moins une vente a été réalisée en 2017.
+
+```sql
+SELECT DISTINCT c.nom, c.prenom, c.mail
+FROM Conso c
+JOIN Vente v ON c.id = v.idConso
+WHERE YEAR(v.dateVente) = 2017;
+```
+
+b) Le nombre de consommateurs fidélisés appartenant à la tranche d’âge 18-30 ans.
+
+```sql
+SELECT COUNT(*) AS nb_fideles_jeunes
+FROM ConsoFidele
+WHERE TIMESTAMPDIFF(YEAR, dateNaiss, CURDATE()) BETWEEN 18 AND 30;
+```
+
+c) La liste des consommateurs avec le montant total des ventes réalisées pour chacun.
+
+```sql
+SELECT c.nom, c.prenom, SUM(v.montantVente) AS montant_total
+FROM Conso c
+JOIN Vente v ON c.id = v.idConso
+GROUP BY c.id, c.nom, c.prenom;
+```
+
+### **Question 2.2**
+
+**Question : (Analyse de vulnérabilité) :** Sachant que la variable `seuilVentes` proviendra directement de la saisie de l’utilisateur dans l’interface JavaFX, expliquez quelle faille de sécurité majeure (OWASP) menace cette méthode.
+
+**La faille :** Le code Java utilise la concaténation de chaînes (le symbole `+`) pour intégrer la saisie de l'utilisateur directement dans la requête SQL : `"... having count(*) > " + seuilVentes ;`
+
+**L'explication simple :** Si l'utilisateur saisit du texte malveillant à la place d'un nombre (par exemple : `0; DROP TABLE Conso; --`), ce texte devient une commande SQL exécutable. La base de données va exécuter la première requête, puis exécuter la commande destructrice `DROP TABLE` qui supprime toutes les données des clients. C'est ce qu'on appelle une **Injection SQL**, classée parmi les failles les plus critiques par l'OWASP (top 10).
+
+### **Question 2.3**
+
+**Question :** Réécrivez la requête SQL et le code Java associé en utilisant l’interface `PreparedStatement` de JDBC pour sécuriser l’accès à la base de données (Aidez-vous du Document 11).
+
+Vous adapterez la requête pour qu’elle liste les consommateurs **qui n’ont pas adhéré** au programme de fidélité et qui dépassent le seuil donné sur une période donnée (paramètres `dateDeb` et `dateFin`).
+
+Requête Préparer pour contré les injections SQL
+
+```java
+// On protège la requête avec des "?" à la place des valeurs
+String requete = "SELECT c.nom, c.prenom, c.tel, c.mail "
+               + "FROM Conso c "
+               + "JOIN Vente v ON c.id = v.idConso "
+               + "WHERE c.id NOT IN (SELECT id FROM ConsoFidele) "
+               + "AND v.dateVente BETWEEN ? AND ? "
+               + "GROUP BY c.id, c.nom, c.prenom, c.tel, c.mail "
+               + "HAVING COUNT(v.id) > ?";
+
+// Préparation sécurisée de la requête
+PreparedStatement pstmt = dbConnect.prepareStatement(requete);
+
+// On insère les vraies valeurs à la place des "?" (1er, 2ème et 3ème point d'interrogation)
+pstmt.setDate(1, java.sql.Date.valueOf(dateDeb));
+pstmt.setDate(2, java.sql.Date.valueOf(dateFin));
+pstmt.setInt(3, seuilVentes);
+
+// Exécution de la requête, sans risque d'injection
+ResultSet res = pstmt.executeQuery();
+
+```
+
+## **Partie 2 – Réalisation de tests unitaires (TDD)**
+
+### **Question 2.4**
+
+**Question :** Compléter la méthode de test unitaire `testInitConso` pour vérifier que la valeur initiale des points de fidélité est bien fixée à zéro lors de la création d’un consommateur fidèle.
+
+```java
+public void testInitConso() {
+    ConsoFidele consoTest = new ConsoFidele("Lifo", "Paul", "lifo.paul@gmail.com", "0600000000",
+        new SimpleDateFormat("yyyy-MM-dd").parse("1961-01-03"),
+        new SimpleDateFormat("yyyy-MM-dd").parse("2017-01-05"));
+
+    // Vérification : on s'attend à trouver 0 point sur le compte du client
+    assertEquals("Erreur : Les points de fidélité initiaux doivent être à 0", 0.0, consoTest.getPointsFidelite());
+}
+```
+
+### **Question 2.5**
+
+**Question :** Compléter la méthode `testAddMontant` pour valider les points de fidélité obtenus dans le cas du programme de type 3 (par points). *Rappel : 10 points entre 100€ et 200€, 20 points entre 201€ et 500€, 50 points au-delà.*
+
+```java
+public void testAddMontant() {
+    ConsoFidele consoTest = new ConsoFidele("Lifo", "Paul", 
+        "lifo.paul@gmail.com", "0600000000",
+        new SimpleDateFormat("yyyy-MM-dd").parse("1961-01-03"),
+        new SimpleDateFormat("yyyy-MM-dd").parse("2017-01-05"));
+
+    // 1er achat : 150€ (Tranche 100-200€). On doit gagner 10 points. 
+    consoTest.addFidelite(3, 150.0);
+    assertEquals("Erreur tranche 1 (100-200€)", 10.0, consoTest.getPointsFidelite());
+
+    // 2ème achat : 300€ (Tranche 201-500€). On gagne 20 points.
+    // Le total devient : 10 + 20 = 30 points.
+    consoTest.addFidelite(3, 300.0);
+    assertEquals("Erreur tranche 2 (201-500€)", 30.0, consoTest.getPointsFidelite());
+
+    // 3ème achat : 600€ (Tranche > 500€). On gagne 50 points.
+    // Le total devient : 30 + 50 = 80 points.
+    consoTest.addFidelite(3, 600.0);
+    assertEquals("Erreur tranche 3 (>500€)", 80.0, consoTest.getPointsFidelite());
+}
+```
+
+# Mission 3 : Statistiques de ventes (POO)
+
+### **Question 3.1**
+
+**Question :** Rédiger le commentaire (Javadoc) de la méthode `statVente` expliquant précisément ce qu’elle calcule et retourne.
+
+```java
+/**
+ * Calcule la proportion de ventes réalisées par des clients fidèles.
+ * Cette méthode parcourt la liste des ventes d'une journée, compte le nombre 
+ * de ventes effectuées par des consommateurs ayant adhéré au programme de fidélité,
+ * puis calcule le pourcentage que cela représente par rapport au nombre total de ventes.
+ *
+ * @param lesVentesDuJour La liste de toutes les ventes réalisées dans la journée.
+ * @return Le pourcentage (double) de ventes attribuables aux clients fidèles 
+ *         (ex: 45.5 pour 45,5%).
+ */
+```
+
+### **Question 3.2**
+
+**Question :** Écrire la méthode Java `getNbVentes` de la classe `Conso` qui retourne le nombre de ventes enregistrées dans la collection du consommateur.
+
+```java
+public int getNbVentes() {
+    // La méthode size() d'une ArrayList retourne le nombre d'éléments qu'elle contient.
+    // Si la liste est vide (jamais acheté), size() retourne 0.
+    return this.lesVentes.size();
+}
+```
+
+### **Question 3.3**
+
+**Question :** Écrire le constructeur de la classe fille `VenteEcommerce` qui permet d’initialiser tous les attributs en faisant appel au constructeur de la classe mère (`super(…)`).
+
+```java
+public VenteEcommerce(Date uneDateVente, Conso unConso, double unMontant, 
+                      String adresseLivraison, String optionLivraison) {
+    // super(...) fait appel au constructeur de la classe parent "Vente"
+    // C'EST OBLIGATOIREMENT la première instruction du constructeur.
+    super(uneDateVente, unConso, unMontant);
+    
+    // Initialisation des attributs spécifiques à la classe fille
+    this.adresseLivraison = adresseLivraison;
+    this.optionLivraison = optionLivraison;
+}
+```
+
+### **Question 3.4**
+
+**Question :** Compléter le code de la méthode `compareLieuVente` (Document 10) en utilisant le polymorphisme et le mot-clé `instanceof`.
+
+```java
+// On récupère toutes les ventes de ce consommateur fidèle
+ArrayList<Vente> sesVentes = cf.getVentes();
+
+// On parcourt chaque vente du client
+for(Vente uneVente : sesVentes) {
+    // Si l'objet uneVente est de la classe VenteEcommerce
+    if (uneVente instanceof VenteEcommerce) {
+        totalEcom += uneVente.getMontantVente();
+    } 
+    // Si l'objet uneVente est de la classe VenteMagasin
+    else if (uneVente instanceof VenteMagasin) {
+        totalMag += uneVente.getMontantVente();
+    }
+}
+```
+
+### **Question 3.5**
+
+**Question :** Expliquer en quoi la dernière instruction `return totalMag/totalEcom;` est dangereuse sur le plan de la robustesse logicielle et proposez une correction.
+
+- **Le problème potentiel :** Si aucun client fidèle n'a effectué de vente en e-commerce sur la période étudiée, la variable `totalEcom` vaudra `0`. Mathématiquement, la division par zéro est impossible. En Java, diviser un `double` par zéro renvoie la valeur absurde `Infinity` ou `NaN` (Not a Number), ce qui va causer des bugs d'affichage ou fausser d'autres calculs en cascade (erreur de *robustesse logicielle*).
+- **La correction :** Il faut toujours vérifier le dénominateur avant de réaliser la division.
+
+```java
+// On vérifie qu'on ne va pas diviser par zéro
+if (totalEcom == 0) {
+    return 0; // Ou retourner -1 pour indiquer un cas exceptionnel (pas de données)
+}
+// Si ce n'est pas zéro, on peut faire le calcul en toute sécurité
+return totalMag / totalEcom;
+
+```
+
+### **Question 3.6**
+
+**Question :** Ajouter à la classe `Conso` une méthode Java qui retourne la liste (`ArrayList`) des ventes d’un montant strictement supérieur à un paramètre donné.
+
+```java
+/**
+ * Retourne la liste des ventes dont le montant est strictement supérieur au paramètre.
+ */
+public ArrayList<Vente> getVentesSuperieuresA(double montantMinimum) {
+    // 1. Création d'une nouvelle liste vide pour stocker le résultat
+    ArrayList<Vente> ventesFiltrees = new ArrayList<>();
+    
+    // 2. On parcourt toutes les ventes du client
+    for (Vente v : this.lesVentes) {
+        // 3. On teste si le montant de la vente dépasse le minimum
+        if (v.getMontantVente() > montantMinimum) {
+            // 4. Si oui, on l'ajoute à notre liste de résultats
+            ventesFiltrees.add(v);
+        }
+    }
+    
+    // 5. On retourne la liste finale (qui peut être vide si aucune vente ne dépasse)
+    return ventesFiltrees;
+}
+```
