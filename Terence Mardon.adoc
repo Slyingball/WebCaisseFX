@@ -1,0 +1,143 @@
+= Correction Personnalisée - TP Étude de Cas WebCaisse
+:author: Correction pour M. Mardon
+:toc: left
+:toc-title: Sommaire
+:icons: font
+
+Bonjour M. Mardon.
+
+Le travail fourni sur l'étude de cas (Missions 1, 2 et 3) ainsi que sur les questions de synthèse est d'un  bon niveau technique. Les implémentations en base de données, en Java et la prise en compte des vulnérabilités de sécurité sont rigoureuses et précises.
+
+Cependant, l'ensemble de ce travail écrit devra impérativement faire l'objet d'une validation orale avec M. Robert. Cette étape est stricte et nécessaire pour s'assurer de votre maîtrise réelle des concepts et vérifier que le contenu n'a pas été généré de manière automatisée.
+
+Voici le détail factuel de la correction.
+
+== Mission 1 : Souscription en ligne et Sécurité
+
+=== Question 1.1 — Proposition de structure de base de données
+**Votre proposition :** Schéma relationnel textuel avec les tables `Formule`, `Client`, `ProgrammeFidelite`, `PointDeVente`, `Langue` et `ModuleLangue`.
+
+[WARNING]
+.Remarque - Modélisation incomplète
+====
+Votre schéma relationnel est propre et l'externalisation de la formule vers le point de vente est correcte. Toutefois, il manque une entité importante : la table `Module` (et sa table de liaison `Composer` avec `Formule`).
+Par conséquent, votre table d'association `ModuleLangue` relie les langues aux points de vente, mais omet la notion de "Module" pourtant requise par l'énoncé.
+
+====
+
+=== Question 1.2 — Faille de l'envoi de mot de passe
+**Votre réponse :** Analyse détaillée via les critères DICP et le RGPD. Proposition d'un processus avec jeton (token) unique et hachage (ex: bcrypt).
+
+[NOTE]
+.Évaluation - Validé
+====
+L'analyse des risques métiers et légaux est précise. Le processus d'authentification proposé correspond parfaitement aux standards de cybersécurité actuels.
+====
+
+=== Questions 1.3 et 1.4 — Historisation des formules
+**Votre réponse :** Constat de l'absence de temporalité et du blocage lié à la clé primaire. Création d'une clé primaire substituée (`id` auto-incrémenté) et ajout de `dateDebut` / `dateFin`.
+
+[NOTE]
+.Évaluation - Conforme
+====
+Le diagnostic est exact. L'utilisation d'une clé primaire artificielle couplée aux dates est une solution technique viable pour gérer l'historique sans violation de contrainte d'unicité.
+====
+
+=== Question 1.5 — Trigger SQL
+**Votre réponse :** Déclencheur sur `FormuleSouscrite` avec condition `IF OLD.idFormule <> NEW.idFormule`.
+
+[NOTE]
+.Évaluation - Conforme
+====
+Le code SQL est syntaxiquement correct, la table ciblée est la bonne et l'utilisation de la condition limite efficacement les insertions dans la table d'audit.
+====
+
+== Mission 2 : Fidélisation des consommateurs et Robustesse
+
+=== Question 2.1 — Requêtes SQL
+**Vos requêtes :**
+
+[WARNING]
+.Remarque - Oubli mineur dans la requête c
+====
+* **Requêtes a et b :** Correctes. Les jointures et les fonctions (`YEAR`, `TIMESTAMPDIFF`) sont bien maîtrisées.
+* **Requête c :** Incomplète. La consigne exigeait l'affichage de l'adresse de courriel. L'attribut `c.mail` est manquant dans la clause `SELECT` et dans le `GROUP BY`.
+====
+
+=== Questions 2.2 et 2.3 — Faille de sécurité (OWASP) et PreparedStatement
+**Votre réponse :** Identification de l'injection SQL avec exemple d'attaque destructive (`DROP TABLE`). Utilisation de `PreparedStatement`.
+
+[NOTE]
+.Évaluation - Validé
+====
+L'identification de la faille est justifiée. L'implémentation Java est rigoureuse, les paramètres sont correctement positionnés et la requête SQL intègre bien les exclusions et filtres de dates. L'utilisation de `java.sql.Date.valueOf()` est la bonne méthode.
+
+En revanche il *manque la modification de la signature de la méthode*, qui attend 3 paramètres (date de début, date de fin et le seuil)
+====
+
+=== Questions 2.4 et 2.5 — Tests unitaires (JUnit)
+**Votre réponse :** Tests d'initialisation à 0 et vérification des différents paliers d'achat.
+
+[NOTE]
+.Évaluation - Conforme
+====
+Les assertions couvrent l'ensemble des règles de gestion demandées. La syntaxe JUnit est respectée.
+====
+
+== Mission 3 : Statistiques de ventes (POO)
+
+=== Questions 3.1 à 3.3 — Javadoc, Méthodes et Constructeur
+**Votre réponse :** Rédaction Javadoc complète, utilisation de `size()` et de `super()`.
+
+[NOTE]
+.Évaluation - Validé
+====
+Le code est fonctionnel et respecte l'encapsulation ainsi que les mécanismes d'héritage standard.
+====
+
+=== Questions 3.4 et 3.5 — Polymorphisme et Robustesse
+**Votre réponse :** Utilisation de `instanceof` pour séparer les totaux et ajout d'un contrôle `if (totalEcom == 0)` pour éviter la propagation d'erreurs.
+
+[NOTE]
+.Évaluation - Validé
+====
+L'algorithme de calcul est correct. Le risque mathématique de la division par zéro est identifié et la parade mise en place est robuste.
+====
+
+=== Question 3.6 — Filtrage des ventes
+**Votre réponse :** Boucle de parcours `for`, condition sur le montant et ajout dans une `ArrayList`.
+
+[NOTE]
+.Évaluation - Conforme
+====
+L'algorithme de filtrage est exact et correctement implémenté.
+====
+
+
+== Partie 3 : Questions de synthèse (Java, SQL et Sécurité)
+
+**Vos réponses :** Document `QuestionWebCaisse.adoc` traitant les 10 questions (NF525, OWASP, WHERE/HAVING, JavaFX, POO, etc.).
+
+[NOTE]
+.Évaluation - Très satisfaisant
+====
+L'ensemble de vos réponses est précis, technique et démontre une vraie compréhension des enjeux.
+Plusieurs points sont particulièrement pertinents :
+
+* Le rappel sur le type primitif `double` en Java qui ne lève pas d'`ArithmeticException` lors d'une division par zéro, mais renvoie `NaN` ou `Infinity`, démontre une connaissance approfondie du langage.
+* La critique de l'opérateur `instanceof` comme anti-pattern (violation du principe Ouvert/Fermé SOLID) est exacte et justifiée.
+* L'explication du rôle du `Launcher` lié au système de modules (JPMS) introduit dans Java 11+ est factuellement correcte.
+
+*Ces éléments devront être expliqués et justifiés oralement auprès de M. Robert.*
+====
+
+== Conclusion
+
+Note estimée : *18 / 20*
+
+Le travail rendu est  solide sur l'ensemble des missions techniques et théoriques. La compréhension des mécanismes de sécurité et d'architecture est démontrée à l'écrit.
+
+Pour valider définitivement ces acquis et confirmer ce niveau de note lors des prochains TP, vous devez :
+
+- Contacter M. Robert pour l'entretien oral obligatoire sur les différentes questions de synthèse.
+- Présenter le fonctionnement de votre prototype si celui-ci a été finalisé (ou ajouter des copies d'écran).
